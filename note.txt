@@ -1,0 +1,20 @@
+message from client 1 -> client 2 : ( example )
+{
+    "action": "OUTPUT",
+    "data": {
+        "layers_output": [
+            None,
+            None,
+            None,
+            tensor_P3_features,  # a tensor PyTorch
+            None,
+            tensor_P4_features,  # a tensor PyTorch
+            None,
+            None,
+            tensor_P5_features,  # a tensor PyTorch
+            tensor_SPPF_output   # a tensor PyTorch
+            # ... và các giá trị None khác cho các layer không được lưu
+        ],
+        "last_layer_idx": 9
+    }
+}

@@ -85,7 +85,7 @@ class SplitDetectionPredictor(DetectionPredictor):
         model.fp16 = self.args.half
         self.model = model
 
-    def postprocess(self, preds, img, orig_imgs=None, path=None):
+    def postprocess(self, preds, img = [640 , 640], orig_imgs=None, path=None):
         """Post-processes predictions and returns a list of Results objects."""
         """Choose the best bounding boxes from the output."""
         preds = ops.non_max_suppression(preds,  # output from model
@@ -108,5 +108,5 @@ class SplitDetectionPredictor(DetectionPredictor):
         ]
 
     def construct_result(self, pred, img, orig_img, img_path):
-        pred[:, :4] = ops.scale_boxes(img.shape[2:], pred[:, :4], orig_img.shape)
+        pred[:, :4] = ops.scale_boxes(img, pred[:, :4], orig_img.shape)   #
         return Results(orig_img, path=img_path, names=self.model.names, boxes=pred[:, :6])
