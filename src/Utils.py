@@ -1,6 +1,7 @@
 import pika
 from requests.auth import HTTPBasicAuth
 import requests
+import pandas as pd
 
 
 def delete_old_queues(address, username, password, virtual_host):
@@ -28,3 +29,32 @@ def delete_old_queues(address, username, password, virtual_host):
         return True
     else:
         return False
+
+def write_to_csv(partial_data):
+
+    cols = ["FPS_Input" , "" , "num Frame" , "" ,
+            "[1] All time", "" , "[1] Inference time" , "" , "[1] Utilization" , "" ,
+            "[2] All time", "" , "[2] Inference time" , "" , "[2] Utilization" , "" ,
+            "display time", "" , "non-display time"
+            ]
+    """
+    df = pd.DataFrame(columns=cols)
+    df.to_csv('output.csv', index=False)
+    """
+    file_path = 'output.csv'
+    partial_df = pd.DataFrame([partial_data])
+
+    # ensure all columns are present
+    for col in cols :
+        if col not in partial_df.columns:
+            partial_df[col] =''
+
+    # reoder
+    partial_df = partial_df[expected_columns]
+
+    if not os.path.exists(file_path):
+        partial_df.to_csv(file_path, index=False)
+    else:
+        partial_df.to_csv(file_path, mode='a', index=False, header=False)
+
+

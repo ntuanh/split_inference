@@ -15,6 +15,9 @@ class Scheduler:
         self.intermediate_queue = f"intermediate_queue_{self.layer_id}"
         self.channel.queue_declare(self.intermediate_queue, durable=False)
 
+        self.bbox_queue = "bbox_queue"
+        self.ori_img_queue = "ori_img_queue"
+
     def send_next_layer(self, intermediate_queue, data, logger):
         if data != 'STOP':
             data["layers_output"] = [t.cpu() if isinstance(t, torch.Tensor) else None for t in data["layers_output"]]
@@ -37,44 +40,59 @@ class Scheduler:
             )
     def send_to_tracker(self ,tracker_queue ,  predictions , frame_index , logger ):
         # prepare data
-        if frame_index != - 1:
-            try:
-                if not isinstance(predictions, (list, tuple)) or len(predictions) == 0 or not isinstance(predictions[0],
-                                                                                                         torch.Tensor):
+        try :
+            if predictions is not 'STOP':
+                if not isinstance(predictions , (list , tuple)) or len(predictions) == 0 or not isinstance(predictions[0] , torch.Tensor):
                     logger.log_warning(
                         f"Frame {frame_index}: Invalid prediction format received. Skipping send to tracker.")
                     return
 
                 prediction_tensor = predictions[0]
-
                 prediction_tensor_cpu = prediction_tensor.cpu()
 
                 message_to_tracker = {
-                    "predictions": prediction_tensor_cpu,
+                    "predictions": prediction_tensor_cpu ,
                     "frame_index": frame_index
                 }
+            else :
+                message_to_tracker = 'STOP'
 
-                message_bytes = pickle.dumps(message_to_tracker)
-                self.channel.basic_publish(
-                    exchange='',
-                    routing_key=tracker_queue,
-                    body=message_bytes
-                )
-
-            except Exception as e:
-                logger.log_error(f"Frame {frame_index}: Failed to send data to tracker. Error: {e}")
-        else :
-            message = pickle.dumps('STOP')
+            message_bytes = pickle.dumps(message_to_tracker)
             self.channel.basic_publish(
                 exchange='',
                 routing_key=tracker_queue,
-                body=message,
+                body=message_bytes
             )
+        except Exception as e:
+            logger.log_error(f"Frame {frame_index}: Failed to send data to tracker. Error: {e}")
+
+    def send_ori_img(self , tracker_queue ,  frame_to_send  , frame_index ):
+        try :
+            if frame_to_send is not 'STOP':
+                message = {
+                    "ori_img" : frame_to_send ,
+                    "frame_index" : frame_index
+                }
+            else :
+                message = 'STOP'
+
+            message_bytes = pickle.dumps(message)
+            self.channel.basic_publish(
+                exchange= '',
+                routing_key=tracker_queue ,
+                body=message_bytes
+            )
+        except Exception as e :
+            logger.log_error(f"Frame {frame_index}: Failed to send data to tracker. Error: {e}")
 
     def first_layer(self, model, data, save_layers, batch_frame, logger):
         time_inference = 0
         input_image = []
         predictor = SplitDetectionPredictor(model, overrides={"imgsz": 640})
+        frame_index = 0
+
+        self.channel.queue_declare(queue=self.ori_img_queue, durable=False)
+        self.channel.basic_qos(prefetch_count=50)
 
         model.eval()
         model.to(self.device)
@@ -91,10 +109,15 @@ class Scheduler:
         while True:
             start = time.time()
             ret, frame = cap.read()
+            # send origin frame
+
             if not ret:
                 y = 'STOP'
                 self.send_next_layer(self.intermediate_queue, y, logger)
+                self.send_ori_img(self.ori_img_queue , y , frame_index)
                 break
+            else :
+                self.send_ori_img(self.ori_img_queue , frame , frame_index)
             frame = cv2.resize(frame, (640, 640))
             tensor = torch.from_numpy(frame).float().permute(2, 0, 1)  # shape: (3, 640, 640)
             tensor /= 255.0
@@ -121,6 +144,7 @@ class Scheduler:
                 self.send_next_layer(self.intermediate_queue, y, logger)
                 input_image = []
                 pbar.update(batch_frame)
+                frame_index += batch_frame
             else:
                 continue
 
@@ -140,8 +164,7 @@ class Scheduler:
         self.channel.queue_declare(queue=last_queue, durable=False)
         self.channel.basic_qos(prefetch_count=50)
 
-        tracker_queue = "tracker"
-        self.channel.queue_declare(queue=tracker_queue, durable=False)
+        self.channel.queue_declare(queue=self.bbox_queue, durable=False)
         self.channel.basic_qos(prefetch_count=50)
 
         pbar = tqdm(desc="Processing video (while loop)", unit="frame")
@@ -157,7 +180,7 @@ class Scheduler:
                     start = time.time()
                     # Tail predict
                     predictions = model.forward_tail(y)
-                    self.send_to_tracker(tracker_queue , predictions ,frame_index , logger)
+                    self.send_to_tracker(self.bbox_queue , predictions ,frame_index , logger)
 
                     # Postprocess
                     # if save_output:
@@ -166,7 +189,7 @@ class Scheduler:
                     frame_index += batch_frame
                     pbar.update(batch_frame)
                 else:
-                    self.send_to_tracker(tracker_queue , predictions , -1 , logger)
+                    self.send_to_tracker(self.bbox_queue , 'STOP' , frame_index , logger)
                     break
             else:
                 continue
