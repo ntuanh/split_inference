@@ -4,7 +4,8 @@ from tqdm import tqdm
 import torch
 import cv2
 from src.Model import SplitDetectionPredictor
-
+from src.Model import BoundingBox
+from ultralytics.engine.results import Results
 
 class Scheduler:
     def __init__(self, client_id, layer_id, channel, device):
@@ -88,7 +89,7 @@ class Scheduler:
     def first_layer(self, model, data, save_layers, batch_frame, logger):
         time_inference = 0
         input_image = []
-        predictor = SplitDetectionPredictor(model, overrides={"imgsz": 640})
+        predictor = SplitDetectionPredictor(model ,overrides={"imgsz": 640})
         frame_index = 0
 
         self.channel.queue_declare(queue=self.ori_img_queue, durable=False)
@@ -118,7 +119,6 @@ class Scheduler:
                 break
             else :
                 self.send_ori_img(self.ori_img_queue , frame , frame_index)
-            frame = cv2.resize(frame, (640, 640))
             tensor = torch.from_numpy(frame).float().permute(2, 0, 1)  # shape: (3, 640, 640)
             tensor /= 255.0
             input_image.append(tensor)
@@ -136,6 +136,9 @@ class Scheduler:
 
                 # Head predict
                 y = model.forward_head(preprocess_image, save_layers)
+                y["img_shape"] = preprocess_image.shape[2:]
+                y["orig_img_shape"] = input_image.shape[2:]
+
                 # if save_output:
                 #     y["img"] = preprocess_image
                 #     y["orig_imgs"] = input_image
@@ -156,7 +159,8 @@ class Scheduler:
     def last_layer(self, model, batch_frame, logger):
         time_inference = 0
         frame_index = 0
-        predictor = SplitDetectionPredictor(model, overrides={"imgsz": 640})
+        predictor = BoundingBox(overrides={"imgsz": 640})
+        # predictor = SplitDetectionPredictor(model , overrides={"imgsz": 640} )
 
         model.eval()
         model.to(self.device)
@@ -180,15 +184,37 @@ class Scheduler:
                     start = time.time()
                     # Tail predict
                     predictions = model.forward_tail(y)
-                    self.send_to_tracker(self.bbox_queue , predictions ,frame_index , logger)
 
-                    # Postprocess
-                    # if save_output:
-                    #     results = predictor.postprocess(predictions, y["img"], y["orig_imgs"], y["path"])
+                    self.send_to_tracker(self.bbox_queue , predictions , frame_index , logger)
+
+                    # origin_frame_test = cv2.imread('D:\SplitInference\split_inference\src\origin_image_test.png')
+
+                    display = False
+                    if display :
+                        raw_prediction_tensor = predictions[0]
+
+                        orig_imgs_list = [origin_frame_test]
+
+                        tensor = torch.zeros(1024, 576)
+
+                        results = predictor.postprocess(
+                            preds=raw_prediction_tensor,
+                            img_shape=tensor.shape,
+                            orig_shape= tensor.shape ,
+                            orig_imgs=orig_imgs_list
+                        )
+
+                        if results:
+                            final_result = results[0]
+                            annotated_image = final_result.plot()
+                            cv2.imshow("Test Postprocess", annotated_image)
+                            cv2.waitKey(int(1000/20))
+
                     time_inference += (time.time() - start)
                     frame_index += batch_frame
                     pbar.update(batch_frame)
                 else:
+                    cv2.destroyAllWindows()
                     self.send_to_tracker(self.bbox_queue , 'STOP' , frame_index , logger)
                     break
             else:

@@ -1,6 +1,7 @@
 import contextlib
 from copy import deepcopy
 from typing import Union, List
+import yaml
 
 import numpy as np
 import torch
@@ -79,34 +80,65 @@ class SplitDetectionModel(nn.Module):
         return torch.tensor(x).to(self.device) if isinstance(x, np.ndarray) else x
 
 
+class BoundingBox(DetectionPredictor):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        with open("D:\SplitInference\split_inference\src\coco.yaml", "r") as f:
+            data = yaml.safe_load(f)
+        self.names = data["names"]
+
+    def postprocess(self, preds, img_shape=None, orig_shape=None, orig_imgs=None):
+        """Post-processes predictions and returns a list of Results objects."""
+        preds = ops.non_max_suppression(preds,
+                                        self.args.conf,
+                                        self.args.iou,
+                                        agnostic=self.args.agnostic_nms,
+                                        max_det=self.args.max_det,
+                                        classes=self.args.classes)
+
+        if orig_imgs is not None and not isinstance(orig_imgs, list):  # input images are a torch.Tensor, not a list
+            orig_imgs = ops.convert_torch2numpy_batch(orig_imgs)
+
+        results = []
+        for i, pred in enumerate(preds):
+            if orig_imgs is None:
+                orig_img = np.empty([0, 0, 0, 0])
+                img_path = ""
+            else:
+                orig_img = orig_imgs[i]
+                img_path = ""
+
+            pred[:, :4] = ops.scale_boxes(img_shape, pred[:, :4], orig_shape)
+            results.append(Results(orig_img, path=img_path, names=self.names, boxes=pred))
+        return results
+
 class SplitDetectionPredictor(DetectionPredictor):
     def __init__(self, model, **kwargs):
         super().__init__(**kwargs)
         model.fp16 = self.args.half
         self.model = model
 
-    def postprocess(self, preds, img = [640 , 640], orig_imgs=None, path=None):
+    def postprocess(self, preds, img_shape=None, orig_shape=None, orig_imgs=None):
         """Post-processes predictions and returns a list of Results objects."""
-        """Choose the best bounding boxes from the output."""
-        preds = ops.non_max_suppression(preds,  # output from model
+        preds = ops.non_max_suppression(preds,
                                         self.args.conf,
                                         self.args.iou,
-                                        self.args.classes,
-                                        self.args.agnostic_nms,
+                                        agnostic=self.args.agnostic_nms,
                                         max_det=self.args.max_det,
-                                        nc=len(self.model.names),
-                                        )
+                                        classes=self.args.classes)
+
         if orig_imgs is not None and not isinstance(orig_imgs, list):  # input images are a torch.Tensor, not a list
             orig_imgs = ops.convert_torch2numpy_batch(orig_imgs)
 
-        return self.construct_results(preds, img, orig_imgs, path)
+        results = []
+        for i, pred in enumerate(preds):
+            if orig_imgs is None:
+                orig_img = np.empty([0, 0, 0, 0])
+                img_path = ""
+            else:
+                orig_img = orig_imgs[i]
+                img_path = ""
 
-    def construct_results(self, preds, img, orig_imgs, path):
-        return [
-            self.construct_result(pred, img, orig_img, img_path)
-            for pred, orig_img, img_path in zip(preds, orig_imgs, path)
-        ]
-
-    def construct_result(self, pred, img, orig_img, img_path):
-        pred[:, :4] = ops.scale_boxes(img, pred[:, :4], orig_img.shape)   #
-        return Results(orig_img, path=img_path, names=self.model.names, boxes=pred[:, :6])
+            pred[:, :4] = ops.scale_boxes(img_shape, pred[:, :4], orig_shape)
+            results.append(Results(orig_img, path=img_path, names=self.model.names, boxes=pred))
+        return results
