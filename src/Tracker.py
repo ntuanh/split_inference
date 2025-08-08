@@ -40,7 +40,7 @@ class Tracker:
         self.image_stream_stopped = False
         self.bbox_stream_stopped = False
 
-        self.fps = 60
+        self.fps = 30
         self.start_receive_bouding_box = 0
         self.start_receive_origin_image = 0
 

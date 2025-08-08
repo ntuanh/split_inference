@@ -119,6 +119,7 @@ class Scheduler:
                 break
             else :
                 self.send_ori_img(self.ori_img_queue , frame , frame_index)
+            frame = cv2.resize(frame, (640, 640))
             tensor = torch.from_numpy(frame).float().permute(2, 0, 1)  # shape: (3, 640, 640)
             tensor /= 255.0
             input_image.append(tensor)
