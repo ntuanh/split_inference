@@ -2,6 +2,7 @@ import contextlib
 from copy import deepcopy
 from typing import Union, List
 import yaml
+import os
 
 import numpy as np
 import torch
@@ -11,7 +12,6 @@ from ultralytics import YOLO
 from ultralytics.engine.results import Results
 from ultralytics.models.yolo.detect.predict import DetectionPredictor
 from ultralytics.utils import ops
-
 
 class SplitDetectionModel(nn.Module):
     def __init__(self, cfg=YOLO('yolov8n.pt').model, split_layer=-1):
@@ -83,7 +83,9 @@ class SplitDetectionModel(nn.Module):
 class BoundingBox(DetectionPredictor):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        with open("D:\SplitInference\split_inference\src\coco.yaml", "r") as f:
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        coco_yaml_path = os.path.join(current_dir, "coco.yaml")
+        with open(coco_yaml_path, "r") as f:
             data = yaml.safe_load(f)
         self.names = data["names"]
 
