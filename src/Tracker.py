@@ -41,8 +41,11 @@ class Tracker:
         self.bbox_stream_stopped = False
 
         self.fps = 30
-        self.start_receive_bouding_box = 0
+        self.start_receive_bounding_box = 0
         self.start_receive_origin_image = 0
+
+        self.orig_img_size = (0 , 0)
+
 
 
 
@@ -61,6 +64,7 @@ class Tracker:
 
             frame_index = message.get("frame_index")
             frame = message.get("ori_img")
+            self.orig_img_size = message.get("orig_img_size")
 
             if frame_index == 0:
                 self.start_receive_origin_image = time.time()
@@ -78,7 +82,7 @@ class Tracker:
             message = pickle.loads(body)
             if message == 'STOP':
                 print("[Tracker] STOP signal received from bbox queue.")
-                print(f"[Bouding Box][Time] {time.time() - self.start_receive_bouding_box}")
+                print(f"[Bouding Box][Time] {time.time() - self.start_receive_bounding_box}")
                 self.bbox_stream_stopped = True
                 return
 
@@ -86,7 +90,7 @@ class Tracker:
             predictions = message.get("predictions")
 
             if frame_index == 0:
-                self.start_receive_bouding_box = time.time()
+                self.start_receive_bounding_box = time.time()
 
             # print(f"--- [Received BBox] Frame Index: {frame_index} ---")
             # print(f"[Predictions] check type {type(predictions)}")
@@ -131,7 +135,7 @@ class Tracker:
             print("[Tracker] Connection closed.")
 
     def _process_pair(self, frame_index):
-        predictor = BoundingBox(overrides={"imgsz": 640})
+        predictor = BoundingBox()
 
         origin_frame_test = self.image_buffer[frame_index]
         raw_prediction_tensor = self.bbox_buffer[frame_index]
@@ -139,8 +143,15 @@ class Tracker:
         origin_frame_shape = origin_frame_test.shape
         origin_frame_width , origin_frame_height = origin_frame_shape[:2]
 
-        # print(f"[Origin Image] type : {type(origin_frame_test)}")
-        # print(f"[Origin Image] shape : {origin_frame_shape}")
+        # print(f"[Frame] : {frame_index}")
+        # detections = self.process_yolo_output(raw_prediction_tensor)
+        # print(detections[:5])
+
+        # print(f"[BBox][type] : {type(raw_prediction_tensor)}")
+        # print(f"[BBox][shape] : {raw_prediction_tensor.shape}")
+
+        print(f"[Origin Image] type : {type(origin_frame_test)}")
+        print(f"[Origin Image] shape : {origin_frame_shape[:2]}")
         # print(f"[Origin Image Width] :{origin_frame_width}")
         # print(f"[Origin Image Height]: {origin_frame_height}")
 
@@ -152,14 +163,19 @@ class Tracker:
 
             results = predictor.postprocess(
                 preds=raw_prediction_tensor,
-                img_shape=tensor.shape,
-                orig_shape=tensor.shape,
+                resized_shape=(640 , 640),
+                orig_shape=origin_frame_shape[:2],  #(480 , 852)
                 orig_imgs=orig_imgs_list
             )
 
             if results:
+                # print(f"[Result][type]{type(results)}")
+                # print(f"[Result[0]][type]{type(results[0])}")
+                # print("[Boxes]")
+                # print(results[0].boxes)
                 final_result = results[0]
                 annotated_image = final_result.plot()
+                annotated_image = annotated_image[0:self.orig_img_size[0] , 0 : self.orig_img_size[1]]
                 cv2.imshow("Visual Detection Output", annotated_image)
                 cv2.waitKey(int(1000 / self.fps))
 

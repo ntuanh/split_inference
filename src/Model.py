@@ -80,8 +80,9 @@ class SplitDetectionModel(nn.Module):
         return torch.tensor(x).to(self.device) if isinstance(x, np.ndarray) else x
 
 
-class BoundingBox(DetectionPredictor):
-    def __init__(self, **kwargs):
+class BoundingBox(DetectionPredictor ):
+    def __init__(self , **kwargs):
+        # super().__init__()
         super().__init__(**kwargs)
         current_dir = os.path.dirname(os.path.abspath(__file__))
         coco_yaml_path = os.path.join(current_dir, "coco.yaml")
@@ -89,7 +90,7 @@ class BoundingBox(DetectionPredictor):
             data = yaml.safe_load(f)
         self.names = data["names"]
 
-    def postprocess(self, preds, img_shape=None, orig_shape=None, orig_imgs=None):
+    def postprocess(self, preds, resized_shape=None, orig_shape=None, orig_imgs=None):
         """Post-processes predictions and returns a list of Results objects."""
         preds = ops.non_max_suppression(preds,
                                         self.args.conf,
@@ -109,9 +110,21 @@ class BoundingBox(DetectionPredictor):
             else:
                 orig_img = orig_imgs[i]
                 img_path = ""
+            scaled_preds = pred.clone()
+            scaled_preds[:, :4] = ops.scale_boxes(
+                resized_shape,
+                scaled_preds[:, :4],
+                orig_img.shape
+            )
+            results_sub = Results(orig_img=orig_img, path="", names=self.names, boxes=scaled_preds)
+            results.append(results_sub)
 
-            pred[:, :4] = ops.scale_boxes(img_shape, pred[:, :4], orig_shape)
-            results.append(Results(orig_img, path=img_path, names=self.names, boxes=pred))
+            # pred[:, :4] = ops.scale_boxes(img_shape, pred[:, :4], orig_shape)
+            # print(f"[Debug in postprocess] [img_shape] {img_shape}")    # output(640 ,640)
+            # print(f"[Debug in postprocess] [orig_shape] {orig_shape}")  # output(480 , 852)
+            #
+            # results.append(Results(orig_img, path=img_path, names=self.names, boxes=pred))
+
         return results
 
 class SplitDetectionPredictor(DetectionPredictor):
@@ -144,3 +157,4 @@ class SplitDetectionPredictor(DetectionPredictor):
             pred[:, :4] = ops.scale_boxes(img_shape, pred[:, :4], orig_shape)
             results.append(Results(orig_img, path=img_path, names=self.model.names, boxes=pred))
         return results
+
