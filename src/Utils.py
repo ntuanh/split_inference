@@ -35,7 +35,7 @@ def delete_old_queues(address, username, password, virtual_host):
 """ write to csv file """
 
 cols = [
-        "[T]totalTm","[T]totalFr","[T]Frme1st"
+        "[T]totalTm","[T]totalFr","[T]TmRecv" , "[T]FRPS"
         #"[1]totalTm", "[1]unitiTm",
         #"[2]totalTm", "[2]unitiTm",
         ]
@@ -51,7 +51,6 @@ def write_partial(partial_data, flush=False):
     # don't run if not exist csv file
     update_csv_header(file_path ,cols)
 
-    # update buffer with new data
     row_buffer.update(partial_data)
 
     new_cols = [c for c in partial_data.keys() if c not in cols]
@@ -68,7 +67,6 @@ def write_partial(partial_data, flush=False):
         flush = True
 
     if flush:
-        # build dataframe with all current columns
         row_df = pd.DataFrame([row_buffer], columns=cols)
 
         if not os.path.exists(file_path):

@@ -70,13 +70,14 @@ class Scheduler:
         except Exception as e:
             logger.log_error(f"Frame {frame_index}: Failed to send data to tracker. Error: {e}")
 
-    def send_ori_img(self ,  tracker_queue ,  frame_to_send  , frame_index , orig_img_size , logger , signal = 'CONTINUE'):
+    def send_ori_img(self ,  tracker_queue ,  frame_to_send  , frame_index , orig_img_size , logger , total_frames = -1 , signal = 'CONTINUE'):
         try :
             if signal != 'STOP':
                 message = {
                     "ori_img" : frame_to_send ,
                     "frame_index" : frame_index,
-                    "orig_img_size" : orig_img_size
+                    "orig_img_size" : orig_img_size,
+                    "total_frames" : total_frames
                 }
             else :
                 message = 'STOP'
@@ -90,11 +91,20 @@ class Scheduler:
         except Exception as e :
             logger.log_error(f"Frame {frame_index}: Failed to send data to tracker. Error: {e}")
 
+    def get_total_frames(self ,video_path):
+        cap = cv2.VideoCapture(video_path)
+        if not cap.isOpened():
+            raise Exception("Cannot open video file")
+
+        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        cap.release()
+        return total_frames
+
     def first_layer(self, model, data, save_layers, batch_frame, logger):
         time_inference = 0
         input_image = []
         predictor = SplitDetectionPredictor(model ,overrides={"imgsz": 640})
-        frame_index = 0
+        frame_index = 1
 
         self.channel.queue_declare(queue=self.ori_img_queue, durable=False)
         self.channel.basic_qos(prefetch_count=50)
@@ -103,6 +113,8 @@ class Scheduler:
         model.to(self.device)
         video_path = data
         cap = cv2.VideoCapture(video_path)
+        total_frames = self.get_total_frames(video_path)
+        # print(f"[Total frames]{total_frames}")
 
         if not cap.isOpened():
             logger.log_error(f"Not open video")
@@ -134,7 +146,7 @@ class Scheduler:
                 border_size = w - h
                 frame= cv2.copyMakeBorder(frame, 0, border_size, 0, 0, cv2.BORDER_CONSTANT, value=(0, 0, 0))
 
-            self.send_ori_img(self.ori_img_queue, frame, frame_index , orig_img_size , logger)
+            self.send_ori_img(self.ori_img_queue, frame, frame_index , orig_img_size ,  logger , total_frames)
 
             frame = cv2.resize(frame, (640 , 640 ))
             # print(f"[Frame][Shape] : {frame.shape}")
@@ -175,7 +187,7 @@ class Scheduler:
 
     def last_layer(self, model, batch_frame, logger):
         time_inference = 0
-        frame_index = 0
+        frame_index = 1
         predictor = BoundingBox()
 
         model.eval()

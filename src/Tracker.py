@@ -50,8 +50,13 @@ class Tracker:
         self.dict_data = {
             "[T]totalTm" : 0
             ,"[T]totalFr" : 0
-            ,"[T]Frme1st" : 0
+            ,"[T]TmRecv" : 0
+            ,"[T]FRPS" : 0
         }
+
+        self.start_time_received = 0
+        self.total_frames = 0
+        self.digits = 5
 
 
 
@@ -70,6 +75,10 @@ class Tracker:
 
             frame_index = message.get("frame_index")
             frame = message.get("ori_img")
+            total_frames = message.get("total_frames")
+
+            if total_frames != -1 :
+                self.total_frames = total_frames
             self.orig_img_size = message.get("orig_img_size")
 
             if frame_index == 0:
@@ -123,7 +132,7 @@ class Tracker:
 
         total_time = time.time() - start_time
         print(f"[Tracker][Time] total time: {total_time:.2f}s")
-        self.dict_data["[T]totalTm"] = total_time
+        self.dict_data["[T]totalTm"] = round(total_time , self.digits)
         write_partial(self.dict_data)
 
         print("\n[Tracker] All streams stopped. Loop finished.")
@@ -146,19 +155,23 @@ class Tracker:
 
     def _process_pair(self, frame_index):
         predictor = BoundingBox()
+        self.dict_data["[T]totalFr"] = self.total_frames
+        # print("[Frame] index " , frame_index)
+
+        if frame_index == 1:
+            self.start_time_received = time.time()
+        elif frame_index == self.total_frames :
+            total_real = time.time() - self.start_time_received
+            self.dict_data["[T]TmRecv"] = round(total_real , self.digits)
+            self.dict_data["[T]FRPS"] = round(self.total_frames / total_real , self.digits)
+        # print(f"[Start time received] {self.start_time_received}")
+
 
         origin_frame_test = self.image_buffer[frame_index]
         raw_prediction_tensor = self.bbox_buffer[frame_index]
 
         origin_frame_shape = origin_frame_test.shape
         origin_frame_width , origin_frame_height = origin_frame_shape[:2]
-
-        # print(f"[BBox][type] : {type(raw_prediction_tensor)}")
-        # print(f"[BBox][shape] : {raw_prediction_tensor.shape}")
-        # print(f"[Origin Image] type : {type(origin_frame_test)}")
-        # print(f"[Origin Image] shape : {origin_frame_shape[:2]}")
-        # print(f"[Origin Image Width] :{origin_frame_width}")
-        # print(f"[Origin Image Height]: {origin_frame_height}")
 
         display = True
         if display:
@@ -174,14 +187,10 @@ class Tracker:
             )
 
             if results:
-                # print(f"[Result][type]{type(results)}")
-                # print(f"[Result[0]][type]{type(results[0])}")
-                # print("[Boxes]")
-                # print(results[0].boxes)
                 final_result = results[0]
                 annotated_image = final_result.plot()
                 annotated_image = annotated_image[0:self.orig_img_size[0] , 0 : self.orig_img_size[1]]
-                cv2.imshow("Visual Detection Output", annotated_image)
-                cv2.waitKey(int(1000 / self.fps))
+                # cv2.imshow("Visual Detection Output", annotated_image)
+                # cv2.waitKey(int(1000 / self.fps))
 
 
