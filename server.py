@@ -24,6 +24,7 @@ def signal_handler(sig, frame):
     sys.exit(0)
 
 
+
 if __name__ == "__main__":
     signal.signal(signal.SIGINT, signal_handler)
     delete_old_queues(address, username, password, virtual_host)

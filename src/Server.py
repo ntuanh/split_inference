@@ -8,6 +8,7 @@ import torch.nn as nn
 
 import src.Model
 import src.Log
+# from src.Utils import delete_old_queues
 
 
 class Server:
@@ -41,6 +42,10 @@ class Server:
         self.logger = src.Log.Logger(f"{log_path}/app.log")
         self.logger.log_info(f"Application start. Server is waiting for {self.total_clients} clients.")
 
+        self.cnt_client = 0
+
+        print(f"[Total client] {self.total_clients}")
+
     def on_request(self, ch, method, props, body):
         message = pickle.loads(body)
         action = message["action"]
@@ -71,6 +76,11 @@ class Server:
             routing_key=reply_queue_name,
             body=message
         )
+        self.cnt_client += 1
+        # print(f"[Count client] {self.cnt_client}")
+        if self.cnt_client == len(self.total_clients) :
+            print("Auto ending (fake)")
+            # self.auto_ending()
 
     def start(self):
         self.channel.start_consuming()
@@ -106,3 +116,8 @@ class Server:
                         "debug_mode": self.debug_mode}
 
             self.send_to_response(client_id, pickle.dumps(response))
+
+    # def auto_ending(self):
+    #     print("\n Auto ending ! ")
+    #     delete_old_queues(address, username, password, virtual_host)
+    #     sys.exit(0)

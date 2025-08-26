@@ -20,30 +20,32 @@ class Scheduler:
         self.ori_img_queue = "ori_img_queue"
 
 
-    def send_next_layer(self, intermediate_queue, data, logger):
-        if data != 'STOP':
-            data["layers_output"] = [t.cpu() if isinstance(t, torch.Tensor) else None for t in data["layers_output"]]
-            message = pickle.dumps({
-                "action": "OUTPUT",
-                "data": data
-            })
+    def send_next_layer(self, intermediate_queue, data, logger , signal = 'CONTINUE'):
+        try:
+            if signal != 'STOP':
+                data["layers_output"] = [t.cpu() if isinstance(t, torch.Tensor) else None for t in data["layers_output"]]
+                message = pickle.dumps({
+                    "action": "OUTPUT",
+                    "data": data
+                })
 
-            self.channel.basic_publish(
-                exchange='',
-                routing_key=intermediate_queue,
-                body=message,
-            )
-        else:
-            message = pickle.dumps(data)
-            self.channel.basic_publish(
-                exchange='',
-                routing_key=intermediate_queue,
-                body=message,
-            )
-    def send_to_tracker(self ,tracker_queue ,  predictions , frame_index , logger ):
-        # prepare data
+                self.channel.basic_publish(
+                    exchange='',
+                    routing_key=intermediate_queue,
+                    body=message,
+                )
+            else:
+                message = pickle.dumps(data)
+                self.channel.basic_publish(
+                    exchange='',
+                    routing_key=intermediate_queue,
+                    body=message,
+                )
+        except Exception as e:
+            logger.log_error(f"Frame {frame_index}: Failed to send data to next layer. Error: {e}")
+    def send_to_tracker(self ,tracker_queue ,  predictions , frame_index , logger , signal = 'CONTINUE' ):
         try :
-            if predictions is not 'STOP':
+            if signal != 'STOP':
                 if not isinstance(predictions , (list , tuple)) or len(predictions) == 0 or not isinstance(predictions[0] , torch.Tensor):
                     logger.log_warning(
                         f"Frame {frame_index}: Invalid prediction format received. Skipping send to tracker.")
@@ -68,9 +70,9 @@ class Scheduler:
         except Exception as e:
             logger.log_error(f"Frame {frame_index}: Failed to send data to tracker. Error: {e}")
 
-    def send_ori_img(self , tracker_queue ,  frame_to_send  , frame_index , orig_img_size):
+    def send_ori_img(self ,  tracker_queue ,  frame_to_send  , frame_index , orig_img_size , logger , signal = 'CONTINUE'):
         try :
-            if frame_to_send is not 'STOP':
+            if signal != 'STOP':
                 message = {
                     "ori_img" : frame_to_send ,
                     "frame_index" : frame_index,
@@ -117,8 +119,8 @@ class Scheduler:
             # send origin frame
             if not ret or frame is None:
                 y = 'STOP'
-                self.send_next_layer(self.intermediate_queue, y, logger)
-                self.send_ori_img(self.ori_img_queue , y , frame_index, (0 , 0))
+                self.send_next_layer(self.intermediate_queue, y, logger , signal = 'STOP')
+                self.send_ori_img(self.ori_img_queue , y , frame_index, (0 , 0) , logger , signal= 'STOP')
                 break
 
             # make border
@@ -132,17 +134,13 @@ class Scheduler:
                 border_size = w - h
                 frame= cv2.copyMakeBorder(frame, 0, border_size, 0, 0, cv2.BORDER_CONSTANT, value=(0, 0, 0))
 
-            self.send_ori_img(self.ori_img_queue, frame, frame_index , orig_img_size)
+            self.send_ori_img(self.ori_img_queue, frame, frame_index , orig_img_size , logger)
 
             frame = cv2.resize(frame, (640 , 640 ))
             # print(f"[Frame][Shape] : {frame.shape}")
             tensor = torch.from_numpy(frame).float().permute(2, 0, 1)  # shape: (3, 640, 640)
             tensor /= 255.0
             input_image.append(tensor)
-            # # debug
-            # frame = cv2.resize(frame, (750, 750))
-            # self.send_ori_img(self.ori_img_queue , frame , frame_index)
-
 
             if len(input_image) == batch_frame:
                 input_image = torch.stack(input_image)
@@ -160,13 +158,8 @@ class Scheduler:
                 y["img_shape"] = preprocess_image.shape[2:]
                 y["orig_img_shape"] = input_image.shape[2:]
 
-                # if save_output:
-                #     y["img"] = preprocess_image
-                #     y["orig_imgs"] = input_image
-                #     y["path"] = path
                 time_inference += (time.time() - start)
-                # print(f"[img_shape]{y["img_shape"].size()}")
-                # print(f"[orig_img_shape] {y["orig_img_shape"].shape}")
+
                 self.send_next_layer(self.intermediate_queue, y, logger)
                 input_image = []
                 pbar.update(batch_frame)
@@ -176,6 +169,7 @@ class Scheduler:
 
         cap.release()
         pbar.close()
+        print("[time_inference]" , time_inference)
         logger.log_info(f"End Inference.")
         return time_inference
 
@@ -183,7 +177,6 @@ class Scheduler:
         time_inference = 0
         frame_index = 0
         predictor = BoundingBox()
-        # predictor = SplitDetectionPredictor(model , overrides={"imgsz": 640} )
 
         model.eval()
         model.to(self.device)
@@ -207,7 +200,6 @@ class Scheduler:
                     start = time.time()
                     # Tail predict
                     predictions = model.forward_tail(y)
-                    # print(f"[Prediction[0]][Shape]{predictions[0].shape}")
 
                     self.send_to_tracker(self.bbox_queue , predictions , frame_index , logger)
 
@@ -215,8 +207,7 @@ class Scheduler:
                     frame_index += batch_frame
                     pbar.update(batch_frame)
                 else:
-                    cv2.destroyAllWindows()
-                    self.send_to_tracker(self.bbox_queue , 'STOP' , frame_index , logger)
+                    self.send_to_tracker(self.bbox_queue , 'STOP' , frame_index , logger, 'STOP')
                     break
             else:
                 continue

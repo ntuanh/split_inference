@@ -13,6 +13,7 @@ from ultralytics import YOLO
 from ultralytics.engine.results import Results
 from ultralytics.models.yolo.detect.predict import DetectionPredictor
 
+from src.Utils import write_partial
 
 from src.Model import BoundingBox
 
@@ -46,6 +47,11 @@ class Tracker:
 
         self.orig_img_size = (0 , 0)
 
+        self.dict_data = {
+            "[T]totalTm" : 0
+            ,"[T]totalFr" : 0
+            ,"[T]Frme1st" : 0
+        }
 
 
 
@@ -115,7 +121,11 @@ class Tracker:
                 break
             self.connection.process_data_events(time_limit=1)
 
-        print(f"[Tracker][Time] total time: {time.time() - start_time:.2f}s")
+        total_time = time.time() - start_time
+        print(f"[Tracker][Time] total time: {total_time:.2f}s")
+        self.dict_data["[T]totalTm"] = total_time
+        write_partial(self.dict_data)
+
         print("\n[Tracker] All streams stopped. Loop finished.")
 
     def run(self):
