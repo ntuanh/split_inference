@@ -82,7 +82,6 @@ class SplitDetectionModel(nn.Module):
 
 class BoundingBox(DetectionPredictor ):
     def __init__(self , **kwargs):
-        # super().__init__()
         super().__init__(**kwargs)
         current_dir = os.path.dirname(os.path.abspath(__file__))
         coco_yaml_path = os.path.join(current_dir, "coco.yaml")
@@ -91,7 +90,6 @@ class BoundingBox(DetectionPredictor ):
         self.names = data["names"]
 
     def postprocess(self, preds, resized_shape=None, orig_shape=None, orig_imgs=None):
-        """Post-processes predictions and returns a list of Results objects."""
         preds = ops.non_max_suppression(preds,
                                         self.args.conf,
                                         self.args.iou,
@@ -118,12 +116,6 @@ class BoundingBox(DetectionPredictor ):
             )
             results_sub = Results(orig_img=orig_img, path="", names=self.names, boxes=scaled_preds)
             results.append(results_sub)
-
-            # pred[:, :4] = ops.scale_boxes(img_shape, pred[:, :4], orig_shape)
-            # print(f"[Debug in postprocess] [img_shape] {img_shape}")    # output(640 ,640)
-            # print(f"[Debug in postprocess] [orig_shape] {orig_shape}")  # output(480 , 852)
-            #
-            # results.append(Results(orig_img, path=img_path, names=self.names, boxes=pred))
 
         return results
 

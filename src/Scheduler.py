@@ -115,7 +115,6 @@ class Scheduler:
             ret, frame = cap.read()
 
             # send origin frame
-
             if not ret or frame is None:
                 y = 'STOP'
                 self.send_next_layer(self.intermediate_queue, y, logger)
@@ -210,29 +209,7 @@ class Scheduler:
                     predictions = model.forward_tail(y)
                     # print(f"[Prediction[0]][Shape]{predictions[0].shape}")
 
-
                     self.send_to_tracker(self.bbox_queue , predictions , frame_index , logger)
-
-                    display = False
-                    if display :
-                        raw_prediction_tensor = predictions[0]
-
-                        orig_imgs_list = [origin_frame_test]
-
-                        tensor = torch.zeros(1024, 576)
-
-                        results = predictor.postprocess(
-                            preds=raw_prediction_tensor,
-                            img_shape=tensor.shape,
-                            orig_shape= tensor.shape ,
-                            orig_imgs=orig_imgs_list
-                        )
-
-                        if results:
-                            final_result = results[0]
-                            annotated_image = final_result.plot()
-                            cv2.imshow("Test Postprocess", annotated_image)
-                            cv2.waitKey(int(1000/20))
 
                     time_inference += (time.time() - start)
                     frame_index += batch_frame

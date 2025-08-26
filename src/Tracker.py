@@ -143,15 +143,10 @@ class Tracker:
         origin_frame_shape = origin_frame_test.shape
         origin_frame_width , origin_frame_height = origin_frame_shape[:2]
 
-        # print(f"[Frame] : {frame_index}")
-        # detections = self.process_yolo_output(raw_prediction_tensor)
-        # print(detections[:5])
-
         # print(f"[BBox][type] : {type(raw_prediction_tensor)}")
         # print(f"[BBox][shape] : {raw_prediction_tensor.shape}")
-
-        print(f"[Origin Image] type : {type(origin_frame_test)}")
-        print(f"[Origin Image] shape : {origin_frame_shape[:2]}")
+        # print(f"[Origin Image] type : {type(origin_frame_test)}")
+        # print(f"[Origin Image] shape : {origin_frame_shape[:2]}")
         # print(f"[Origin Image Width] :{origin_frame_width}")
         # print(f"[Origin Image Height]: {origin_frame_height}")
 
@@ -164,7 +159,7 @@ class Tracker:
             results = predictor.postprocess(
                 preds=raw_prediction_tensor,
                 resized_shape=(640 , 640),
-                orig_shape=origin_frame_shape[:2],  #(480 , 852)
+                orig_shape=origin_frame_shape[:2],
                 orig_imgs=orig_imgs_list
             )
 
