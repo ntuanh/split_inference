@@ -35,7 +35,7 @@ def delete_old_queues(address, username, password, virtual_host):
 """ write to csv file """
 
 cols = [
-        "[T]totalTm","[T]totalFr","[T]TmRecv" , "[T]FRPS"
+        "[T]totalTm","[T]totalFr","[T]TmRecv" , "[T]FRPS" , "[T]Fr/~1s" , "[T]Fr/~2s" , "[T]Fr/~3s"
         #"[1]totalTm", "[1]unitiTm",
         #"[2]totalTm", "[2]unitiTm",
         ]

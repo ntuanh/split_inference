@@ -8,7 +8,7 @@ import time
 import cv2
 
 from ultralytics.utils import ops
-
+import matplotlib.pyplot as plt
 from ultralytics import YOLO
 from ultralytics.engine.results import Results
 from ultralytics.models.yolo.detect.predict import DetectionPredictor
@@ -41,7 +41,7 @@ class Tracker:
         self.image_stream_stopped = False
         self.bbox_stream_stopped = False
 
-        self.fps = 30
+        self.fps = 50
         self.start_receive_bounding_box = 0
         self.start_receive_origin_image = 0
 
@@ -52,11 +52,22 @@ class Tracker:
             ,"[T]totalFr" : 0
             ,"[T]TmRecv" : 0
             ,"[T]FRPS" : 0
+            ,"[T]Fr/~1s" : 0
+            ,"[T]Fr/~2s" : 0
+            ,"[T]Fr/~3s" : 0
         }
 
         self.start_time_received = 0
         self.total_frames = 0
         self.digits = 5
+
+        self.prev_frame = time.time()
+        self.prev_imshow = time.time()
+        self.lst_time = [0]
+        self.lst_delay = []
+
+        self.num_testbed = 2
+        self.frame_received = 0
 
 
 
@@ -88,7 +99,10 @@ class Tracker:
             self.image_buffer[frame_index] = frame
 
             if frame_index in self.bbox_buffer:
-                self._process_pair(frame_index)
+                if self.frame_received > int(self.total_frames // 6):
+                    self._process_pair(frame_index)
+                else :
+                    self.frame_received += 1
         finally:
             ch.basic_ack(delivery_tag=method.delivery_tag)
 
@@ -97,7 +111,6 @@ class Tracker:
             message = pickle.loads(body)
             if message == 'STOP':
                 print("[Tracker] STOP signal received from bbox queue.")
-                print(f"[Bouding Box][Time] {time.time() - self.start_receive_bounding_box}")
                 self.bbox_stream_stopped = True
                 return
 
@@ -112,7 +125,10 @@ class Tracker:
             self.bbox_buffer[frame_index] = predictions
 
             if frame_index in self.image_buffer:
-                self._process_pair(frame_index)
+                if self.frame_received > int(self.total_frames // 6):
+                    self._process_pair(frame_index)
+                else:
+                    self.frame_received += 1
 
         finally:
             ch.basic_ack(delivery_tag=method.delivery_tag)
@@ -124,6 +140,7 @@ class Tracker:
 
         print("[Tracker] Listening for confirmation... Press Ctrl+C to exit.")
         start_time = time.time()
+        self.prev_frame = time.time()
 
         while not (self.image_stream_stopped and self.bbox_stream_stopped):
             if self.stop_event.is_set():
@@ -147,6 +164,8 @@ class Tracker:
             self.cleanup()
 
     def cleanup(self):
+        # self.visual_time(self.lst_time , "Received")
+        # self.visual_time(self.lst_time, "Imshow")
         print("[Tracker] Cleaning up...")
         if self.connection and self.connection.is_open:
             self.connection.close()
@@ -156,7 +175,6 @@ class Tracker:
     def _process_pair(self, frame_index):
         predictor = BoundingBox()
         self.dict_data["[T]totalFr"] = self.total_frames
-        # print("[Frame] index " , frame_index)
 
         if frame_index == 1:
             self.start_time_received = time.time()
@@ -164,8 +182,16 @@ class Tracker:
             total_real = time.time() - self.start_time_received
             self.dict_data["[T]TmRecv"] = round(total_real , self.digits)
             self.dict_data["[T]FRPS"] = round(self.total_frames / total_real , self.digits)
-        # print(f"[Start time received] {self.start_time_received}")
 
+        self.lst_time.append(time.time() - self.prev_frame)
+        if len(self.lst_time) == self.num_testbed + 3 :
+            lst = self.lst_time[3:]
+            time_mean = sum(lst) / len(lst)
+            frps = 1 / time_mean + 1
+            self.dict_data["[T]Fr/~1s"] = round(frps , self.digits)
+            self.dict_data["[T]Fr/~2s"] = round(time_mean , self.digits)
+            self.dict_data["[T]Fr/~3s"] = round(time.time() - self.start_time_received, self.digits)
+        self.prev_frame = time.time()
 
         origin_frame_test = self.image_buffer[frame_index]
         raw_prediction_tensor = self.bbox_buffer[frame_index]
@@ -190,7 +216,28 @@ class Tracker:
                 final_result = results[0]
                 annotated_image = final_result.plot()
                 annotated_image = annotated_image[0:self.orig_img_size[0] , 0 : self.orig_img_size[1]]
-                # cv2.imshow("Visual Detection Output", annotated_image)
-                # cv2.waitKey(int(1000 / self.fps))
+                cv2.putText(annotated_image, f"FPS: {int(1 / (time.time() - self.prev_imshow))}",
+                            (20, 40),  # Position (x, y)
+                            cv2.FONT_HERSHEY_SIMPLEX,  # Font
+                            1,  # Font scale
+                            (0, 255, 0),  # Color (BGR) - Green
+                            2,  # Thickness
+                            cv2.LINE_AA)  # Line type
+                cv2.imshow("Visual Detection Output", annotated_image)
+                cv2.waitKey(int(1000 / self.fps))
+                self.prev_imshow = time.time()
 
+    def visual_time(self , data , title):
+        # Plot
+        # print(f"[Data] {data}")
+        plt.plot(data, marker='o', linestyle='-', color='b', label="My Data")
 
+        # Add details
+        plt.title(title)
+        plt.xlabel("Frame Index")
+        plt.ylabel("Value")
+        plt.legend()
+        plt.grid(True)
+
+        # Show plot
+        plt.show()
